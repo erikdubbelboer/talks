@@ -9,13 +9,13 @@ https://www.atomx.com/jobs
 
 * There are different ways to get more performance our of your programs
 
-- Algorhitmic complexity _O(n)_
+- Algorithmic complexity _O(n)_
 - Reducing number of instructions per operation
 - Reducing generated garbage
 - Doing things in parallel
 - Tips
 
-* Algorhitmic complexity of Go types
+* Algorithmic complexity of Go types
 
 - slice
 - map
@@ -115,7 +115,7 @@ _Show_example_
 - Introduces a whole new class of potential bugs
 - race detector _(show_example)_
 - channels _(for_another_time)_
-- mutex
+- sync.Mutex
 - atomic.Value/Pointer _(show_example)_
 
 * Tips
@@ -128,6 +128,6 @@ _Show_example_
 
 - [[https://github.com/atomx/gocode/blob/master/github.com/atomx/ip2location/tree.go#L12][ip2location in memory tree]]
 - [[https://golang.org/src/strings/strings.go?s=8854:8894#L334][strings.Join]]
-- [[http://blog.dubbelboer.com/2015/04/06/go-queue.html][Queues]]
+- [[http://blog.dubbelboer.com/2015/04/06/go-queue.html][Queue using slices]]
 - Use channel to limit concurrency
 

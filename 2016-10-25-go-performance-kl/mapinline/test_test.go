@@ -30,3 +30,5 @@ func BenchmarkBig(b *testing.B) {
 		g2 = x
 	}
 }
+
+// Fun: try removing the assigments to g1 and g2.
