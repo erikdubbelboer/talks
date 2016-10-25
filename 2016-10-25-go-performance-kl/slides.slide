@@ -1,0 +1,133 @@
+High performance Go
+25 Oct 2016
+
+Erik Dubbelboer
+CTO, Atomx
+erik@atomx.com
+http://blog.dubbelboer.com
+https://www.atomx.com/jobs
+
+* There are different ways to get more performance our of your programs
+
+- Algorhitmic complexity _O(n)_
+- Reducing number of instructions per operation
+- Reducing generated garbage
+- Doing things in parallel
+- Tips
+
+* Algorhitmic complexity of Go types
+
+- slice
+- map
+- container/list
+
+* slice
+
+- get/set: _O(1)_
+- append/delete: _O(1)+_
+- sometimes need to reallocate
+- cap
+- [[https://github.com/golang/go/blob/5d8324e6822e34c900e36d67adf640cee6693d25/src/runtime/slice.go#L101][factor of 2]]
+
+* map
+
+- get/set: _O(1)_
+- append/delete: _O(1)_
+- hashtable
+- inline data _(mapinline_example)_
+
+* container/list
+
+- get/set: _O(n)_
+- append/delete: _O(1)_
+- lot of garbage
+
+* intset example
+
+We do a lot of tests to see if an element is in a set so we optimized this.
+
+* Reducing number of instructions per operation
+
+- Easy in low level language like C
+- Harder in Go
+- No generics so generate specific code for your needs
+- Using pointers for arguments
+- Don't use interfaces
+
+* ffjson
+
+Show example
+
+[[https://github.com/pquerna/ffjson]]
+
+* msgp
+
+Show example
+
+[[https://github.com/tinylib/msgp]]
+
+* Using pointers for arguments
+
+Show passbyvalue example
+
+* Not using interfaces
+
+Show interfaces example
+
+* Reducing generated garbage
+
+- Escape analysis
+- When to use pointers
+- Reuse objects
+
+* Escape analysis
+
+.code escape-analysis/heap.go
+
+	go run -gcflags '-m -l' heap.go
+	./heap.go:3: doit x does not escape
+	./heap.go:9: main &y does not escape
+
+* Escape analysis
+
+.code escape-analysis/stack.go
+
+	go run -gcflags '-m -l' stack.go
+	./stack.go:5: leaking param: x
+	./stack.go:11: &y escapes to heap
+	./stack.go:10: moved to heap: y
+
+* when to use pointers
+
+Show heap-stack-garbage example
+
+* Reuse objects
+
+.code pool.go
+
+_Show_example_
+
+[[http://blog.dubbelboer.com/2016/05/21/sync-vs-chan-pool.html][Don't try to use a channel as a pool.]]
+
+* Doing things in parallel
+
+- goroutines _(show_example)_
+- Introduces a whole new class of potential bugs
+- race detector _(show_example)_
+- channels _(for_another_time)_
+- mutex
+- atomic.Value/Pointer _(show_example)_
+
+* Tips
+
+- Always benchmark _(show_bpprof_example)_
+- Only optimize hot paths
+- Don't do TLS in Go
+
+* Extra time?
+
+- [[https://github.com/atomx/gocode/blob/master/github.com/atomx/ip2location/tree.go#L12][ip2location in memory tree]]
+- [[https://golang.org/src/strings/strings.go?s=8854:8894#L334][strings.Join]]
+- [[http://blog.dubbelboer.com/2015/04/06/go-queue.html][Queues]]
+- Use channel to limit concurrency
+
