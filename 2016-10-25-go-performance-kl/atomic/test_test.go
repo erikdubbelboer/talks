@@ -42,8 +42,10 @@ func BenchmarkValue(b *testing.B) {
 func BenchmarkRWMutex(b *testing.B) {
 	var l sync.RWMutex
 
+	l.Lock()
 	m := make(map[int]int)
 	m[1] = 2
+	l.Unlock()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

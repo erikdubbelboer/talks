@@ -6,33 +6,88 @@ import (
 	"testing"
 )
 
-func BenchmarkNormal(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		b := bytes.Buffer{}
+const work = 10000
 
-		for j := 0; j < 100; j++ {
-			b.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+// No pool
+
+func BenchmarkNoPool(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			bb := &bytes.Buffer{}
+			for j := 0; j < work; j++ {
+				bb.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+			}
 		}
+	})
+}
+
+// sync.Pool
+
+func BenchmarkSyncPool(b *testing.B) {
+	p := sync.Pool{
+		New: func() interface{} {
+			return &bytes.Buffer{}
+		},
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			bb := p.Get().(*bytes.Buffer)
+			bb.Reset()
+			for j := 0; j < work; j++ {
+				bb.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+			}
+			p.Put(bb)
+		}
+	})
+}
+
+// Channel pool
+
+type Pool struct {
+	New func() interface{}
+
+	pool chan interface{}
+}
+
+func NewPool(n func() interface{}, size int) Pool {
+	p := Pool{
+		New:  n,
+		pool: make(chan interface{}, size),
+	}
+
+	return p
+}
+
+func (p Pool) Get() interface{} {
+	select {
+	case o := <-p.pool:
+		return o
+	default:
+		return p.New()
 	}
 }
 
-var (
-	p = sync.Pool{
-		New: func() interface{} {
-			return bytes.Buffer{}
-		},
+func (p Pool) Put(o interface{}) {
+	select {
+	case p.pool <- o:
+	default:
 	}
-)
+}
 
-func BenchmarkPool(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		b := p.Get().(bytes.Buffer)
-		b.Reset()
+func BenchmarkChanPool(b *testing.B) {
+	p := NewPool(func() interface{} {
+		return &bytes.Buffer{}
+	}, 32)
 
-		for j := 0; j < 100; j++ {
-			b.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			bb := p.Get().(*bytes.Buffer)
+			bb.Reset()
+			for j := 0; j < work; j++ {
+				bb.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+			}
+			p.Put(bb)
 		}
-
-		p.Put(b)
-	}
+	})
 }
