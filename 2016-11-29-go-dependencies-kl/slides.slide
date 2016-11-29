@@ -1,0 +1,152 @@
+Managing Go dependencies
+29 Nov 2016
+
+Erik Dubbelboer
+CTO, Atomx
+erik@atomx.com
+http://blog.dubbelboer.com
+https://www.atomx.com/
+
+* GOPATH
+
+[[https://github.com/golang/go/wiki/GOPATH][$GOPATH]] defines where your sources live on your filesystem.
+
+Examples:
+
+    $GOPATH/src/github.com/erikdubbelboer/example
+    $GOPATH/src/gopkg.in/gopkg.in/redis.v5
+
+`$GOPATH` can be a `:` separated list. It will search in them in order.
+
+I always set `$GOPATH=$HOME` and put other non-go sources in the same code structure.
+
+* gopkg.in
+
+`go`get` always gets the `master` version of a dependency.
+
+[[http://labix.org/gopkg.in][gopkg.in]] gives you a custom url that will point to a specific tag in your repository.
+
+For example [[https://gopkg.in/redis.v5]] points to [[https://github.com/go-redis/redis/]] with tag `v5.1.0`.
+
+* go list
+
+[[https://dave.cheney.net/2014/09/14/go-list-your-swiss-army-knife][go list]] can be used to inspect your packages.
+
+    $ go list -f '{{ join .Imports "\n" }}'
+    bytes
+    crypto/sha1
+    encoding/hex
+    errors
+    fmt
+    gopkg.in/redis.v5/internal
+    gopkg.in/redis.v5/internal/consistenthash
+    gopkg.in/redis.v5/internal/hashtag
+    gopkg.in/redis.v5/internal/pool
+    gopkg.in/redis.v5/internal/proto
+    io
+    log
+    math/rand
+    net
+    strconv
+    strings
+    sync
+
+- [[https://golang.org/cmd/go/#hdr-List_packages][Can do a lot]], for example `go`list`-f`'{{`join`.Deps`"\n"}}'`.`
+
+* Managing dependencies
+
+2 styles:
+
+1) Every package has its own repository
+2) The monorepo
+
+* Every package has its own repository
+
+- `$GOPATH` already contains a url.
+- Putting `$GOPATH/src/github.com/erikdubbelboer/example` in a repository and host it at `github.com/erikdubbelboer/example` seems logical.
+- How most people start.
+- Works well with `go`get`.
+- Dependencies can either be downloaded separately (`go`get`./...`) or managed by a tool
+
+* vendor/
+
+Go automatically looks for dependencies in a directory called `vendor`.
+
+Introduced in go1.5 behind `$GO15VENDOREXPERIMENT`. Made default in go1.6.
+
+    import "gopkg.in/gopkg.in/redis.v5"
+
+Will look into `./vendor/gopkg.in/redis.v5` before `$GOPATH/gopkg.in/redis.v5`
+
+- `./...` Will not treat vendored packages differently
+- `go`test`./...` will also test your dependencies
+- [[https://github.com/golang/go/issues/11659][`go`fmt`./...` will also format your dependencies]]
+- `go`generate`./...` will try to regenerate from your dependencies
+
+[[https://github.com/golang/go/issues/12432][Only use one layer of vendor/!]]
+
+* Managing your vendor directory
+
+- git submodules
+- No other tools needed
+
+    mkdir -p vendor/gopkg.in
+    git submodule add https://gopkg.in/redis.v5 vendor/gopkg.in/redis.v5
+
+- Tools can make it easier:
+- [[https://github.com/tools/godep][Godep]]
+- [[https://glide.sh/][glide]]
+- [[https://github.com/kardianos/govendor][govendor]]
+
+* Godep
+
+- Parses your sources to find the dependencies (`go`list`)
+- `godep`save` uses the source files in `$GOPATH` and copies them to vendor directory
+- `godep`restore` installs your dependencies (if you didn't commit them)
+- Stores information in [[https://github.com/tools/godep/blob/master/Godeps/Godeps.json][Godeps/Godeps.json]]
+- Always need to vendor all your dependencies otherwise you might get issues
+
+* Godep issue
+
+Same issue as with vendor/ and nested vendor/ before:
+
+    src/github.com/fruit/apple
+    src/github.com/fruit/pear    (import "github.com/fruit/apple")
+    src/github.com/fruit/orange  (import "github.com/fruit/pear")
+    src/github.com/fruit/orange/vendor/fruit/apple
+
+* glide
+
+- `glide`create` creates glide.yaml and guesses which packages you want in there
+- Add dependencies using `glide`get`
+- Install dependencies using `glide`install`
+- Stores information in [[https://github.com/Masterminds/glide/blob/master/glide.yaml][glide.yaml]] and [[https://github.com/Masterminds/glide/blob/master/glide.lock][glide.lock]]
+
+* govendor
+
+- Similar to glide `govendor`init` and `govendor`add`
+- Stores information in [[https://github.com/kardianos/govendor/blob/master/vendor/vendor.json][vendor/vendor.json]]
+- `govendor`fmt`+local`
+- `govendor`test`+local`
+
+* The monorepo
+
+- Instead of putting each package in its own git repository we can put our whole `$GOPATH` in one big repository
+- No more `vendor/`
+- [[https://news.ycombinator.com/item?id=11991479][Google]], [[http://danluu.com/monorepo/][Facebook]] and [[https://blog.gopheracademy.com/advent-2015/go-in-a-monorepo/][DigitalOcean]] use this style
+- [[https://www.atomx.com/][We at atomx.com]] use this.
+- [[http://danluu.com/monorepo/][More advantages]]
+- `go`get` is still usable but will just clone into a new repository.
+- 2 options possible
+- `1.` Check in all sources (the real monorepo)
+- `2.` Use git submodules
+- `git`pull`--rebase`&&`git`submodule`init`&&`git`submodule`update`
+
+    Clone only:       286 files with    62,127 lines of Go code  19M
+    With submodules: 3392 files with 1,185,575 lines of Go code 254M
+
+* Extra
+
+- [[https://docs.google.com/document/d/1CxgUBPlx9iJzkz9JWkb6tIpTe5q32QDmz8l0BouG0Cw/view][Go Escape Analysis Flaws]]
+- `neverblock.go`
+
