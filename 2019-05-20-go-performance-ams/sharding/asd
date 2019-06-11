@@ -1,0 +1,54 @@
+package main
+
+import (
+	"sync"
+	"testing"
+)
+
+var (
+	noPadding  [16]int64
+	yesPadding [16]struct {
+		c int64
+		_ [7]uint64
+	}
+)
+
+func noPaddingWorker(n int) {
+	for i := int64(0); i < 10000; i++ {
+		noPadding[n] += i
+	}
+}
+
+func yesPaddingWorker(n int) {
+	for i := int64(0); i < 10000; i++ {
+		yesPadding[n].c += i
+	}
+}
+
+func BenchmarkNoPadding(b *testing.B) {
+	var wg sync.WaitGroup
+	for i := 0; i < b.N; i++ {
+		wg.Add(16)
+		for n := 0; n < 16; n++ {
+			go func(n int) {
+				noPaddingWorker(n)
+				wg.Done()
+			}(n)
+		}
+		wg.Wait()
+	}
+}
+
+func BenchmarkYesPadding(b *testing.B) {
+	var wg sync.WaitGroup
+	for i := 0; i < b.N; i++ {
+		wg.Add(16)
+		for n := 0; n < 16; n++ {
+			go func(n int) {
+				yesPaddingWorker(n)
+				wg.Done()
+			}(n)
+		}
+		wg.Wait()
+	}
+}

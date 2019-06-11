@@ -1,0 +1,3 @@
+GOGC=1 go test -bench . -benchmem // HL
+BenchmarkNormal-16         	   10000	    107718 ns/op	  386319 B/op	      20 allocs/op
+BenchmarkPreallocate-16    	  100000	     20040 ns/op	   81922 B/op	       1 allocs/op

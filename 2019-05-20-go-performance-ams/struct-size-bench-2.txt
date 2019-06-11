@@ -1,0 +1,4 @@
+go test -bench . -benchmem
+BenchmarkX-16    	 5000000	       351 ns/op	     212 B/op	       1 allocs/op
+BenchmarkY-16    	 5000000	       440 ns/op	     529 B/op	       0 allocs/op (old)
+BenchmarkY-16    	10000000	       337 ns/op	     246 B/op	       0 allocs/op // HL
