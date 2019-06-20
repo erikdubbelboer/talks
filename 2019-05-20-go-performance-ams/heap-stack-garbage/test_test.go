@@ -7,14 +7,18 @@ var stackSink int64
 
 func BenchmarkHeap(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		x := int64(i)
-		heapSink = &x
+		for j := 0; j < 100; j++ {
+			x := int64(i)
+			heapSink = &x
+		}
 	}
 }
 
 func BenchmarkStack(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		x := int64(i)
-		stackSink = x
+		for j := 0; j < 100; j++ {
+			x := int64(i)
+			stackSink = x
+		}
 	}
 }

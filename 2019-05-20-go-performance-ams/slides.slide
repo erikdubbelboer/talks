@@ -1,70 +1,40 @@
-High performance Go
+Tips and Tricks for High performance Go
 20 Jun 2019
 
 Erik Dubbelboer
-Senior Developer, Poki
+Senior Developer, poki.com
 Co-founder/CTO, atomx.com
-Co-founder/CTO, mininova.org
+Maintainer, github.com/valyala/fasthttp
 erik@dubbelboer.com
 
-https://jobs.poki.com/
-
-* There are different ways to get more performance out of your Go code
-
-- Reducing number of instructions per operation
-- Reducing generated garbage
-- Doing things in parallel
-
-* Reducing number of instructions per operation
 
 
-* Reducing number of instructions per operation
 
-- Using the right data structures
-- Doing some interesting tricks
+* Topics
 
-
-* Algorithmic complexity of Go data structures
-
-- array
-- slice
-- map
-- container/list
-
-
-* array
-
- var someArray [32]int
-
-- get/set: _O(1)_
- a[1] = a[0]
+- Benchmarking in Go
+- Unrolling loops
+- Removing bounds checks
+- Escape analysis
+- Why is garbage bad?
+- `sync.Pool`
+- `string`/`[]byte` conversions
+- Struct packing
 
 
-* slice
-
- someSlice := make([]int, length, capacity)
-
-- get/set: _O(1)_
- a[1] = a[0]
-- shrink: _O(1)_
- a = a[:10]
-- append: _O(1)ish_
- a = append(a, 2)
-- sometimes need to grow ([[https://github.com/golang/go/blob/323212b9e6edd55e99d973d00d2132995762c858/src/runtime/slice.go#L96-L114][exponentially]])
-- Always faster to preallocate...
 
 
-* interlude, how to benchmark
+* Benchmarking in Go
 
  $ go test -bench . -benchmem
 
 
-* interlude, how to benchmark
+* Benchmarking in Go
 
 	$ go test -bench . -benchmem
 
- // foo_test.go
- func BenchmarkFoo(b *testing.B) {
+ // slice_test.go
+ func BenchmarkNormal(b *testing.B) {
  	for i := 0; i < b.N; i++ {
  		// Code you want to benchmark here...
  		// This is counted as one "op".
@@ -72,26 +42,14 @@ https://jobs.poki.com/
  }
 
 
-* interlude, how to benchmark
+* Benchmarking in Go
 
-	$ go test -bench . -benchmem
+.code preallocate-slices/test_test.go
 
- // foo_test.go
- func BenchmarkFoo(b *testing.B) {
- 	for i := 0; i < b.N; i++ {
- 		// Code you want to benchmark here...
- 		// This is counted as one "op".
- 	}
- }
-
-	$ go test -bench . -benchmem
-	BenchmarkFoo-16    	    5000	    232430 ns/op	       0 B/op	       0 allocs/op
-	BenchmarkBar-16    	   50000	     32023 ns/op	     339 B/op	       2 allocs/op
-
-For more see: [[https://golang.org/pkg/testing/]]
+- slices grow [[https://github.com/golang/go/blob/323212b9e6edd55e99d973d00d2132995762c858/src/runtime/slice.go#L96-L114][exponentially]]_ish_
 
 
-* slice continued
+* Benchmarking in Go
 
 .code preallocate-slices/test_test.go
 
@@ -100,92 +58,35 @@ For more see: [[https://golang.org/pkg/testing/]]
  BenchmarkPreallocate-16    200000     8219 ns/op     81920 B/op     1 allocs/op
 
 
-* slice continued
+* Benchmarking in Go
 
 .code preallocate-slices/test_test.go
 
 .code slice.txt
 
 
-* map
-
-- get/set: _O(1)_
- m["foo"] = m["bar"]
-
-- delete: _O(1)_
- delete(m, "foo")
-
-- add: _O(1)_
- m["new"] = 1
-
-- hashtable
-- inline small keys and values ([[https://github.com/golang/go/blob/13f179b9c8c3b9d9066e71d0a69cff8c0876098b/src/runtime/map.go#L77][<= 128 bytes]])...
 
 
-* interlude, struct packing
-
-.code struct-size-1.go
-
-
-* interlude, struct packing
-
-.code struct-size-2.go
-
-
-* interlude, struct packing
-
-.code struct-size-3.go
-
-
-* map continued
-
-.code struct-size-4.go
-
-
-* map continued
-
-.code struct-size-4.go
-
-.code struct-size-bench-1.txt
-
-
-* map continued
-
-.code struct-size-5.go
-
-.code struct-size-bench-2.txt
-
-
-* container/list
-
-- get/set: _O(n)_
-- delete: _O(1)_
-- append: _O(1)_
-- lot of garbage!
-- see: [[https://golang.org/pkg/container/list]]
-
-
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Unrolling loops
 
 .code unroll-loop/test.go /^func sumFloat64/,/^}/
 
 
-* Reducing number of instructions per operation
+* Unrolling loops
 
 .code unroll-loop/test.go /^func sumFloat64Unrolled/,/^}/
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Unrolling loops
 
  $ go test -bench . -benchmem
- BenchmarkSum-16           	 5000000	    234   ns/op	       0 B/op	       0 allocs/op
- BenchmarkSumUnrolled-16    	20000000	    96.4 ns/op	       0 B/op	       0 allocs/op
+ BenchmarkSum-16                5000000        234   ns/op           0 B/op           0 allocs/op
+ BenchmarkSumUnrolled-16        20000000        96.4 ns/op           0 B/op           0 allocs/op
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+
+
+* Removing bounds checks
 
 	a1 += s[i]
 	a2 += s[i+1]
@@ -195,8 +96,7 @@ For more see: [[https://golang.org/pkg/testing/]]
 - Bounds check on every line!
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Removing bounds checks
 
 	a1 += s[i]
 	a2 += s[i+1]
@@ -211,8 +111,7 @@ Reverse order?
 	a3 += s[i+2]
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Removing bounds checks
 
 	a1 += s[i]
 	a2 += s[i+1]
@@ -230,15 +129,14 @@ Move the bounds check up!
 Real life example in [[https://github.com/golang/go/blob/7a4d02387fa16cd2a88c30357346e5cf0ae282b1/src/encoding/binary/binary.go#L76][encoding/binary.LittleEndian.Uint64([]byte) uint64]]
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Removing bounds checks
 
 	a1 += s[i]
 	a2 += s[i+1]
 	a3 += s[i+2]
 	a4 += s[i+3]
 
-Remove bounds checks!!
+Remove bounds checks completely!
 
 	ss := (*[4]float64)(unsafe.Pointer(&s[i]))
 	a1 += ss[0]
@@ -247,44 +145,82 @@ Remove bounds checks!!
 	a4 += ss[3]
 
 
-* Reducing number of instructions per operation
-*unrolling*loops*
+* Removing bounds checks
 
  $ go test -bench . -benchmem
- BenchmarkSum-16           	 5000000	    234 ns/op	       0 B/op	       0 allocs/op
- BenchmarkSumUnrolled-16    	20000000	  96.4 ns/op	       0 B/op	       0 allocs/op
- BenchmarkSumUnrolled2-16   	20000000	  67.8 ns/op	       0 B/op	       0 allocs/op
+ BenchmarkSum-16                       5000000        234 ns/op       0 B/op     0 allocs/op
+ BenchmarkSumUnrolled-16               20000000      96.4 ns/op       0 B/op     0 allocs/op
+ BenchmarkSumUnrolledNoBounds-16       20000000      67.8 ns/op       0 B/op     0 allocs/op
 
 
-* Reducing number of instructions per operation
-*Moving*a*nil*check*out*of*a*loop*
-
-.code nil-check-1.go
 
 
-* Reducing number of instructions per operation
-*Moving*a*nil*check*out*of*a*loop*
+* Escape analysis
 
-.code nil-check-1.go HL2
+.code -numbers escape-analysis/heap.go
 
-
-* Reducing number of instructions per operation
-*Moving*a*nil*check*out*of*a*loop*
-
-.code nil-check-2.go
-
-- 11% faster!
-- Real life example in [[https://go-review.googlesource.com/c/go/+/151158][encoding/base64]]
+	$ go run -gcflags '-m -m -l' heap.go
+	./heap.go:3:11: doit x does not escape
+	./heap.go:9:7: main &y does not escape
 
 
-* Reducing number of instructions per operation
-*Don't*make*unnecessary*copies*
+* Escape analysis
 
-.code b2s-1.go
+.code -numbers escape-analysis/stack.go
+
+	$ go run -gcflags '-m -m -l' stack.go
+	./stack.go:5:11: leaking param: x
+	./stack.go:5:11: 	from g (assigned to top level variable) at ./stack.go:6:4
+	./stack.go:11:7: &y escapes to heap
+	./stack.go:11:7: 	from &y (passed to call[argument escapes]) at ./stack.go:11:6
+	./stack.go:10:2: moved to heap: y
 
 
-* Reducing number of instructions per operation
-*Don't*make*unnecessary*copies*
+
+
+* Why is garbage bad?
+
+.code heap-stack-garbage/test_test.go
+
+
+* Why is garbage bad?
+
+.code heap-stack-garbage/test_test.go
+
+	$ GOGC=1 go test -bench . -benchmem
+	BenchmarkHeap-16          2000000          6287   ns/op         801 B/op         100 allocs/op
+	BenchmarkStack-16       500000000            30.7 ns/op           0 B/op           0 allocs/op
+
+
+
+
+* sync.Pool
+
+.code pool.go
+
+
+* sync.Pool
+
+.code pool/test_test.go /^func BenchmarkNoPool/,/^}/
+
+
+* sync.Pool
+
+.code pool/test_test.go /^func BenchmarkPool/,/^}/
+
+
+* sync.Pool
+
+ $ GOGC=1 go test -bench . -benchmem
+ BenchmarkNoPool-16    	  200000	      7375 ns/op	   38516 B/op	       9 allocs/op
+ BenchmarkPool-16      	 1000000	      1047 ns/op	       0 B/op	       0 allocs/op
+
+- Even faster in 1.13 ([[https://github.com/golang/go/issues/22950][no more full clear on GC]])
+
+
+
+
+* string/[]byte conversions
 
  type SliceHeader struct {
          Data uintptr
@@ -297,379 +233,89 @@ Remove bounds checks!!
 	        Len  int
 	}
 
+* string/[]byte conversions
 
-* Reducing number of instructions per operation
-*Don't*make*unnecessary*copies*
+.code b2s/test_test.go /^func BenchmarkSlow/,/^}/
 
-.code b2s-2.go
 
+* string/[]byte conversions
 
-* Reducing number of instructions per operation
-*Don't*make*unnecessary*copies*
+.code b2s/test_test.go /^func b2s/,/^}/
 
-.code s2b-1.go
+.code b2s/test_test.go /^func BenchmarkFast/,/^}/
 
 
-* Reducing number of instructions per operation
-*Don't*make*unnecessary*copies*
+* string/[]byte conversions
 
-.code s2b-2.go
+.code b2s/test_test.go /^func b2s/,/^}/
 
+.code b2s/test_test.go /^func BenchmarkFast/,/^}/
 
-* Reducing number of instructions per operation
-*Using*the*right*api*
+	$ GOGC=1 go test -bench . -benchmem
+	BenchmarkSlow-16        30000000            40.3  ns/op           4 B/op           1 allocs/op
+	BenchmarkFast-16        300000000            4.83 ns/op           0 B/op           0 allocs/op
 
-.code append/1.go
 
 
-* Reducing number of instructions per operation
-*Using*the*right*api*
+* string/[]byte conversions
 
-.code append/2.go
+.code s2b/test_test.go /^func BenchmarkSlow/,/^}/
 
 
-* Reducing number of instructions per operation
-*Using*the*right*api*
+* string/[]byte conversions
 
- $ go test -bench . -benchmem
- BenchmarkItoa-16         	30000000	        43.4 ns/op	      36 B/op	       2 allocs/op
- BenchmarkAppendInt-16    	50000000	        32.1 ns/op	      32 B/op	       1 allocs/op
+.code s2b/test_test.go /^func s2b/,/^}/
 
+.code s2b/test_test.go /^func BenchmarkFast/,/^}/
 
-* Reducing number of instructions per operation
-*Using*optimize*libraries*
 
-- [[https://github.com/mailru/easyjson][github.com/mailru/easyjson]] or [[https://github.com/pquerna/ffjson][github.com/pquerna/ffjson]]
+* string/[]byte conversions
 
-Generate optimized (de)serialization code from your struct definitions.
+.code s2b/test_test.go /^func s2b/,/^}/
 
-- [[https://github.com/valyala/fasthttp][github.com/valyala/fasthttp]]
+.code s2b/test_test.go /^func BenchmarkFast/,/^}/
 
-HTTP library tuned for high performance with zero memory allocations in the hot paths.
+	$ GOGC=1 go test -bench . -benchmem
+	BenchmarkSlow-16        20000000           102    ns/op          16 B/op           1 allocs/op
+	BenchmarkFast-16        500000000            3.67 ns/op           0 B/op           0 allocs/op
 
 
-* Reducing generated garbage
 
-* Reducing generated garbage
 
-- Escape analysis
-- Why is garbage bad?
-- Reuse objects (`sync.Pool`)
+* Struct packing
 
+.code map/test_test.go /^type TooBig/,/^}/
 
-* Reducing generated garbage
-*Escape*analysis*
 
-.code -numbers escape-analysis/heap.go
+* Struct packing
 
-	$ go run -gcflags '-m -m -l' heap.go
-	./heap.go:3:11: doit x does not escape
-	./heap.go:9:7: main &y does not escape
+.code map/test_test.go /^type TooBig/,/^}/
 
+.code map/test_test.go /^type JustRight/,/^}/
 
-* Reducing generated garbage
-*Escape*analysis*
 
-.code -numbers escape-analysis/stack.go
+* Struct packing
 
-	$ go run -gcflags '-m -m -l' stack.go
-	./stack.go:5:11: leaking param: x
-	./stack.go:5:11: 	from g (assigned to top level variable) at ./stack.go:6:4
-	./stack.go:11:7: &y escapes to heap
-	./stack.go:11:7: 	from &y (passed to call[argument escapes]) at ./stack.go:11:6
-	./stack.go:10:2: moved to heap: y
+.code map/test_test.go /^func BenchmarkTooBig/,/^}/
+.code map/test_test.go /^func BenchmarkJustRight/,/^}/
 
 
-* Reducing generated garbage
-*why*is*garbage*bad?*
+* Struct packing
 
-.code heap-stack-garbage/test_test.go
+.code map/test_test.go /^func BenchmarkTooBig/,/^}/
+.code map/test_test.go /^func BenchmarkJustRight/,/^}/
 
+	$ go test -bench . -benchmem
+	BenchmarkTooBig-16                    5000000       362 ns/op       212 B/op       1 allocs/op
+	BenchmarkJustRight-16                 5000000       444 ns/op       529 B/op       0 allocs/op
 
-* Reducing generated garbage
-*why*is*garbage*bad?*
 
-.code heap-stack-garbage/test_test.go
+* Struct packing
 
-  $ GOGC=1 go test -bench . -benchmem
-  BenchmarkHeap-16     	20000000	        61.9 ns/op	       8 B/op	       1 allocs/op
-  BenchmarkStack-16    	2000000000	      0.23 ns/op	       0 B/op	       0 allocs/op
+.code map/test_test.go /^func BenchmarkTooBig/,/^}/
+.code map/test_test.go /^func BenchmarkJustRightPrealloc/,/^}/
 
-
-* Reducing generated garbage
-*Reuse*objects*
-
-.code pool.go
-
-
-* Reducing generated garbage
-*Reuse*objects*
-
-.code pool/test_test.go /^func BenchmarkNoPool/,/^}/
-
-
-* Reducing generated garbage
-*Reuse*objects*
-
-.code pool/test_test.go /^func BenchmarkPool/,/^}/
-
-
-* Reducing generated garbage
-*Reuse*objects*
-
- $ GOGC=1 go test -bench . -benchmem
- BenchmarkNoPool-16    	  200000	      7375 ns/op	   38516 B/op	       9 allocs/op
- BenchmarkPool-16      	 1000000	      1047 ns/op	       0 B/op	       0 allocs/op
-
-- Even faster in 1.13 ([[https://github.com/golang/go/issues/22950][no more full clear on GC]])
-
-
-* Reducing generated garbage
-*Reuse*objects*
-_Common_pool_mistakes_
-
-- Putting in values instead of pointers
-
- type X struct {
- 	// ...
- }
-
- a := pool.Get().(X)
- // ...
- pool.Put(a)
-
-
-* Reducing generated garbage
-*Reuse*objects*
-_Common_pool_mistakes_
-
-- Putting slices in a pool
-
-.code slicepool.go
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
- type LinkedList struct {
- 	next *LinkedList
- 
- 	// Other fields...
- }
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
- a := &LinkedList{}
- b := &LinkedList{}
- a.next = b
- b.next = a
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
- a := &LinkedList{}
- b := &LinkedList{}
- a.next = b
- b.next = a
-
-	n := testing.AllocsPerRun(10, func() {
-			a := &LinkedList{}
-			b := &LinkedList{}
-			a.next = b
-			b.next = a
-	})
-	println(int(n))
-
- 2
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
- func noescape(p *LinkedList) *LinkedList {
- 	x := uintptr(unsafe.Pointer(p))
- 	return (*LinkedList)(unsafe.Pointer(x ^ 0))
- }
-
- a := &LinkedList{}
- b := &LinkedList{}
- a.next = noescape(b)
- b.next = noescape(a)
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
- func noescape(p *LinkedList) *LinkedList {
- 	x := uintptr(unsafe.Pointer(p))
- 	return (*LinkedList)(unsafe.Pointer(x ^ 0))
- }
-
- a := &LinkedList{}
- b := &LinkedList{}
- a.next = noescape(b)
- b.next = noescape(a)
-
-	n := testing.AllocsPerRun(10, func() {
-			a := &LinkedList{}
-			b := &LinkedList{}
-			a.next = noescape(b)
-			b.next = noescape(a)
-	})
-	println(int(n))
-
- 0
-
-Real life example in [[https://github.com/golang/go/blob/7a4d02387fa16cd2a88c30357346e5cf0ae282b1/src/strings/builder.go#L20-L39][strings.Builder.copyCheck()]]
-
-
-* Reducing generated garbage
-*Cheating*the*garbage*collector*
-
-	var Sink *LinkedList
-
-	n := testing.AllocsPerRun(10, func() {
-			a := &LinkedList{}
-			b := &LinkedList{}
-			a.next = noescape(b)
-			b.next = noescape(a)
-			Sink = a
-	})
-	println(int(n))
-
- 1
-
-
-* Doing things in parallel
-
-- goroutines
-- race detector
-
-
-* Doing things in parallel
-*goroutines*
-
-- Brings a new class of issues with it
-- Need synchronization
-- `sync.Mutex`
-- `sync.WaitGroup`
-- Channels
-- `sync/atomic`
-
-* Doing things in parallel
-*goroutines*
-
-.code goroutines/test_test.go /^func work/,/^}/
-
-* Doing things in parallel
-*goroutines*
-
-.code goroutines/test_test.go /^func BenchmarkSerial/,/^}/
-
-* Doing things in parallel
-*goroutines*
-
-.code goroutines/test_test.go /^func BenchmarkWaitGroup/,/^}/
-
-* Doing things in parallel
-*goroutines*
-
-.code goroutines/test_test.go /^func BenchmarkChannel/,/^}/
-
-* Doing things in parallel
-*goroutines*
-
- $ go test -bench . -benchmem 
- BenchmarkSerial-16       	      10	 128681542 ns/op	       6 B/op	       0 allocs/op
- BenchmarkWaitGroup-16    	  100000	     18486 ns/op	     585 B/op	       2 allocs/op
- BenchmarkChannel-16      	  100000	     16807 ns/op	      94 B/op	       1 allocs/op
-
-* Doing things in parallel
-*sync/atomic*
-
-  import "sync/atomic"
-
- func AddInt64(addr *int64, delta int64) (new int64)
- func CompareAndSwapInt64(addr *int64, old, new int64) (swapped bool)
- func LoadInt64(addr *int64) (val int64)
- func StoreInt64(addr *int64, val int64)
- func SwapInt64(addr *int64, new int64) (old int64)
-
-* Doing things in parallel
-*sync/atomic*
-
-.code -numbers atomic.go /^func wrong/,/^}/
-
-* Doing things in parallel
-*sync/atomic*
-
- $ go run -race atomic.go
- 6336
- 12926
- 19153
- 25611
- 31649
- 37859
- 44522
- 50870
- 56819
- 63370
-
-* Doing things in parallel
-*race*checker*
-
- $ go run -race atomic.go 
- WARNING: DATA RACE
- Read at 0x00c0000ae000 by goroutine 28:
-   main.wrong.func1()
-       atomic.go:15 +0x45
- 
- Previous write at 0x00c0000ae000 by goroutine 30:
-   main.wrong.func1()
-       atomic.go:15 +0x5b
- 
- Goroutine 28 (running) created at:
-   main.wrong()
-       atomic.go:12 +0x83
-   main.main()
-       atomic.go:45 +0x2f
- 
- Goroutine 30 (running) created at:
-   main.wrong()
-       atomic.go:12 +0x83
-   main.main()
-       atomic.go:45 +0x2f
- 6994
- 10726
-
-* Doing things in parallel
-*sync/atomic*
-
-.code atomic.go /^func good/,/^}/
-
-* Doing things in parallel
-*sync/atomic*
-
- $ go run -race atomic.go
- 9000
- 19000
- 29000
- 39000
- 48000
- 58000
- 68000
- 78000
- 87000
- 97000
-
-* Summary
-
-- Reduce the number of instructions per operation
-- Use the right data structure
-- Choose the right libraries
-- Sometimes using some dirty code is allowed
-- Reducing generated garbage
-- Do things in parallel
+	$ go test -bench . -benchmem
+	BenchmarkTooBig-16                    5000000       362 ns/op       212 B/op       1 allocs/op
+	BenchmarkJustRight-16                 5000000       444 ns/op       529 B/op       0 allocs/op
+	BenchmarkJustRightPrealloc-16        10000000       340 ns/op       246 B/op       0 allocs/op

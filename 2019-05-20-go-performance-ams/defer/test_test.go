@@ -51,7 +51,6 @@ func slowDefer() {
 }
 
 func BenchmarkNoDefer(b *testing.B) {
-	println(b.N)
 	True = false
 	for i := 0; i < b.N; i++ {
 		noDefer()
