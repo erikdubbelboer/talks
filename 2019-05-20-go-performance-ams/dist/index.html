@@ -1,0 +1,1289 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Tips and Tricks for High performance Go</title>
+    <meta charset='utf-8'>
+    <script>
+      var notesEnabled =  false ;
+    </script>
+    <script src='slides.js'></script>
+
+    
+
+    <script>
+      
+      if (window["location"] && window["location"]["hostname"] == "talks.golang.org") {
+        var _gaq = _gaq || [];
+        _gaq.push(["_setAccount", "UA-11222381-6"]);
+        _gaq.push(["b._setAccount", "UA-49880327-6"]);
+        window.trackPageview = function() {
+          _gaq.push(["_trackPageview", location.pathname+location.hash]);
+          _gaq.push(["b._trackPageview", location.pathname+location.hash]);
+        };
+        window.trackPageview();
+        window.trackEvent = function(category, action, opt_label, opt_value, opt_noninteraction) {
+          _gaq.push(["_trackEvent", category, action, opt_label, opt_value, opt_noninteraction]);
+          _gaq.push(["b._trackEvent", category, action, opt_label, opt_value, opt_noninteraction]);
+        };
+      }
+    </script>
+  </head>
+
+  <body style='display: none'>
+
+		<section class='slides layout-widescreen fullscreen'>
+
+      <article>
+        <h1>Tips and Tricks for High performance Go</h1>
+        
+        <h3>20 June 2019</h3>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    Erik Dubbelboer
+  </p>
+  
+
+  
+  <p>
+    Senior Developer, poki.com
+  </p>
+  
+
+  
+  <p>
+    Co-founder/CTO, atomx.com
+  </p>
+  
+
+  
+  <p>
+    Maintainer, github.com/valyala/fasthttp
+  </p>
+  
+
+          </div>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    
+  </p>
+  
+
+          </div>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    
+  </p>
+  
+
+          </div>
+        
+      </article>
+
+  
+  
+      <article >
+      
+        <h3>Topics</h3>
+        
+  <ul>
+  
+    <li>Benchmarking in Go</li>
+  
+    <li>Unrolling loops</li>
+  
+    <li>Removing bounds checks</li>
+  
+    <li>Escape analysis</li>
+  
+    <li>Why is garbage bad?</li>
+  
+    <li><code>sync.Pool</code></li>
+  
+    <li><code>string / []byte</code> conversions</li>
+  
+    <li>Struct packing</li>
+  
+  </ul>
+
+      
+      <span class="pagenumber">2</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Benchmarking in Go</h3>
+        
+  
+  <div class="code"><pre>$ go test -bench . -benchmem</pre></div>
+  
+
+      
+      <span class="pagenumber">3</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Benchmarking in Go</h3>
+        
+  
+  <div class="code"><pre>$ go test -bench . -benchmem</pre></div>
+  
+
+  
+  <div class="code"><pre>// slice_test.go
+func BenchmarkNormal(b *testing.B) {
+    for i := 0; i &lt; b.N; i&#43;&#43; {
+        // Code you want to benchmark here...
+        // This is counted as one &#34;op&#34;.
+    }
+}</pre></div>
+  
+
+      
+      <span class="pagenumber">4</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Benchmarking in Go</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="5">func appendItems(s []int) []int {</span>
+<span num="6">    for i := 0; i &lt; 10000; i&#43;&#43; {</span>
+<span num="7">        s = append(s, i)</span>
+<span num="8">    }</span>
+<span num="9">    return s</span>
+<span num="10">}</span>
+<span num="11"></span>
+<span num="12">func BenchmarkNormal(b *testing.B) {</span>
+<span num="13">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="14">        appendItems(make([]int, 0))</span>
+<span num="15">    }</span>
+<span num="16">}</span>
+<span num="17"></span>
+<span num="18">func BenchmarkPreallocate(b *testing.B) {</span>
+<span num="19">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="20">        <b>appendItems(make([]int, 0, 10000))</b></span>
+<span num="21">    }</span>
+<span num="22">}</span>
+</pre>
+
+
+</div>
+
+  <ul>
+  
+    <li>slices grow <a href="https://github.com/golang/go/blob/323212b9e6edd55e99d973d00d2132995762c858/src/runtime/slice.go#L96-L114" target="_blank">exponentially</a><i>ish</i></li>
+  
+  </ul>
+
+      
+      <span class="pagenumber">5</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Benchmarking in Go</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="5">func appendItems(s []int) []int {</span>
+<span num="6">    for i := 0; i &lt; 10000; i&#43;&#43; {</span>
+<span num="7">        s = append(s, i)</span>
+<span num="8">    }</span>
+<span num="9">    return s</span>
+<span num="10">}</span>
+<span num="11"></span>
+<span num="12">func BenchmarkNormal(b *testing.B) {</span>
+<span num="13">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="14">        appendItems(make([]int, 0))</span>
+<span num="15">    }</span>
+<span num="16">}</span>
+<span num="17"></span>
+<span num="18">func BenchmarkPreallocate(b *testing.B) {</span>
+<span num="19">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="20">        <b>appendItems(make([]int, 0, 10000))</b></span>
+<span num="21">    }</span>
+<span num="22">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ go test -bench . -benchmem
+BenchmarkNormal-16          50000    33027 ns/op    386297 B/op    20 allocs/op
+BenchmarkPreallocate-16    200000     8219 ns/op     81920 B/op     1 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">6</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Benchmarking in Go</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="5">func appendItems(s []int) []int {</span>
+<span num="6">    for i := 0; i &lt; 10000; i&#43;&#43; {</span>
+<span num="7">        s = append(s, i)</span>
+<span num="8">    }</span>
+<span num="9">    return s</span>
+<span num="10">}</span>
+<span num="11"></span>
+<span num="12">func BenchmarkNormal(b *testing.B) {</span>
+<span num="13">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="14">        appendItems(make([]int, 0))</span>
+<span num="15">    }</span>
+<span num="16">}</span>
+<span num="17"></span>
+<span num="18">func BenchmarkPreallocate(b *testing.B) {</span>
+<span num="19">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="20">        <b>appendItems(make([]int, 0, 10000))</b></span>
+<span num="21">    }</span>
+<span num="22">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="1"><b>GOGC=1 go test -bench . -benchmem</b></span>
+<span num="2">BenchmarkNormal-16                10000        107718 ns/op      386319 B/op          20 allocs/op</span>
+<span num="3">BenchmarkPreallocate-16          100000         20040 ns/op       81922 B/op           1 allocs/op</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">7</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Unrolling loops</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="7">func sumFloat64(s []float64) float64 {</span>
+<span num="8">    a := float64(0)</span>
+<span num="9">    for _, f := range s {</span>
+<span num="10">        a &#43;= f</span>
+<span num="11">    }</span>
+<span num="12">    return a</span>
+<span num="13">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">8</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Unrolling loops</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="15">func sumFloat64Unrolled(s []float64) float64 {</span>
+<span num="16">    var a1, a2, a3, a4 float64</span>
+<span num="17">    l := len(s)</span>
+<span num="18">    lm := l % 4</span>
+<span num="19"></span>
+<span num="20">    for i := lm; i &lt; l; i &#43;= 4 {</span>
+<span num="21">        <b>a1 &#43;= s[i]</b></span>
+<span num="22">        <b>a2 &#43;= s[i&#43;1]</b></span>
+<span num="23">        <b>a3 &#43;= s[i&#43;2]</b></span>
+<span num="24">        <b>a4 &#43;= s[i&#43;3]</b></span>
+<span num="25">    }</span>
+<span num="26">    if lm == 1 {</span>
+<span num="27">        a1 &#43;= s[0]</span>
+<span num="28">    } else if lm == 2 {</span>
+<span num="29">        a1 &#43;= s[0]</span>
+<span num="30">        a2 &#43;= s[1]</span>
+<span num="31">    } else if lm == 3 {</span>
+<span num="32">        a1 &#43;= s[0]</span>
+<span num="33">        a2 &#43;= s[1]</span>
+<span num="34">        a3 &#43;= s[2]</span>
+<span num="35">    }</span>
+<span num="36"></span>
+<span num="37">    return a1 &#43; a2 &#43; a3 &#43; a4</span>
+<span num="38">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">9</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Unrolling loops</h3>
+        
+  
+  <div class="code"><pre>$ go test -bench . -benchmem
+BenchmarkSum-16                5000000        234   ns/op           0 B/op           0 allocs/op
+BenchmarkSumUnrolled-16        20000000        96.4 ns/op           0 B/op           0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">10</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Removing bounds checks</h3>
+        
+  
+  <div class="code"><pre>a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]
+a4 &#43;= s[i&#43;3]</pre></div>
+  
+
+  <ul>
+  
+    <li>Bounds check on every line!</li>
+  
+  </ul>
+
+      
+      <span class="pagenumber">11</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Removing bounds checks</h3>
+        
+  
+  <div class="code"><pre>a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]
+a4 &#43;= s[i&#43;3]</pre></div>
+  
+
+  
+  <p>
+    Reverse order?
+  </p>
+  
+
+  
+  <div class="code"><pre>a4 &#43;= s[i&#43;3]
+a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]</pre></div>
+  
+
+      
+      <span class="pagenumber">12</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Removing bounds checks</h3>
+        
+  
+  <div class="code"><pre>a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]
+a4 &#43;= s[i&#43;3]</pre></div>
+  
+
+  
+  <p>
+    Move the bounds check up!
+  </p>
+  
+
+  
+  <div class="code"><pre>_ = s[i&#43;3]
+a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]
+a4 &#43;= s[i&#43;3]</pre></div>
+  
+
+  
+  <p>
+    Real life example in <a href="https://github.com/golang/go/blob/7a4d02387fa16cd2a88c30357346e5cf0ae282b1/src/encoding/binary/binary.go#L76" target="_blank">encoding/binary.LittleEndian.Uint64([]byte) uint64</a>
+  </p>
+  
+
+      
+      <span class="pagenumber">13</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Removing bounds checks</h3>
+        
+  
+  <div class="code"><pre>a1 &#43;= s[i]
+a2 &#43;= s[i&#43;1]
+a3 &#43;= s[i&#43;2]
+a4 &#43;= s[i&#43;3]</pre></div>
+  
+
+  
+  <p>
+    Remove bounds checks completely!
+  </p>
+  
+
+  
+  <div class="code"><pre>ss := (*[4]float64)(unsafe.Pointer(&amp;s[i]))
+a1 &#43;= ss[0]
+a2 &#43;= ss[1]
+a3 &#43;= ss[2]
+a4 &#43;= ss[3]</pre></div>
+  
+
+      
+      <span class="pagenumber">14</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Removing bounds checks</h3>
+        
+  
+  <div class="code"><pre>$ go test -bench . -benchmem
+BenchmarkSum-16                       5000000        234 ns/op       0 B/op     0 allocs/op
+BenchmarkSumUnrolled-16               20000000      96.4 ns/op       0 B/op     0 allocs/op
+BenchmarkSumUnrolledNoBounds-16       20000000      67.8 ns/op       0 B/op     0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">15</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Escape analysis</h3>
+        
+  <div class="code" >
+
+
+<pre class="numbers"><span num="1">package main</span>
+<span num="2"></span>
+<span num="3">func doit(x *int) {</span>
+<span num="4">    _ = x</span>
+<span num="5">}</span>
+<span num="6"></span>
+<span num="7">func main() {</span>
+<span num="8">    y := 1</span>
+<span num="9">    doit(&amp;y)</span>
+<span num="10">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ go run -gcflags &#39;-m -m -l&#39; heap.go
+./heap.go:3:11: doit x does not escape
+./heap.go:9:7: main &amp;y does not escape</pre></div>
+  
+
+      
+      <span class="pagenumber">16</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Escape analysis</h3>
+        
+  <div class="code" >
+
+
+<pre class="numbers"><span num="1">package main</span>
+<span num="2"></span>
+<span num="3">var g *int</span>
+<span num="4"></span>
+<span num="5">func doit(x *int) {</span>
+<span num="6">    g = x</span>
+<span num="7">}</span>
+<span num="8"></span>
+<span num="9">func main() {</span>
+<span num="10">    y := 1</span>
+<span num="11">    doit(&amp;y)</span>
+<span num="12">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ go run -gcflags &#39;-m -m -l&#39; stack.go
+./stack.go:5:11: leaking param: x
+./stack.go:5:11:     from g (assigned to top level variable) at ./stack.go:6:4
+./stack.go:11:7: &amp;y escapes to heap
+./stack.go:11:7:     from &amp;y (passed to call[argument escapes]) at ./stack.go:11:6
+./stack.go:10:2: moved to heap: y</pre></div>
+  
+
+      
+      <span class="pagenumber">17</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Why is garbage bad?</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="5">var heapSink *int64</span>
+<span num="6">var stackSink int64</span>
+<span num="7"></span>
+<span num="8">func BenchmarkHeap(b *testing.B) {</span>
+<span num="9">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="10">        for j := 0; j &lt; 100; j&#43;&#43; {</span>
+<span num="11">            x := int64(i)</span>
+<span num="12">            heapSink = &amp;x</span>
+<span num="13">        }</span>
+<span num="14">    }</span>
+<span num="15">}</span>
+<span num="16"></span>
+<span num="17">func BenchmarkStack(b *testing.B) {</span>
+<span num="18">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="19">        for j := 0; j &lt; 100; j&#43;&#43; {</span>
+<span num="20">            x := int64(i)</span>
+<span num="21">            stackSink = x</span>
+<span num="22">        }</span>
+<span num="23">    }</span>
+<span num="24">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">18</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Why is garbage bad?</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="5">var heapSink *int64</span>
+<span num="6">var stackSink int64</span>
+<span num="7"></span>
+<span num="8">func BenchmarkHeap(b *testing.B) {</span>
+<span num="9">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="10">        for j := 0; j &lt; 100; j&#43;&#43; {</span>
+<span num="11">            x := int64(i)</span>
+<span num="12">            heapSink = &amp;x</span>
+<span num="13">        }</span>
+<span num="14">    }</span>
+<span num="15">}</span>
+<span num="16"></span>
+<span num="17">func BenchmarkStack(b *testing.B) {</span>
+<span num="18">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="19">        for j := 0; j &lt; 100; j&#43;&#43; {</span>
+<span num="20">            x := int64(i)</span>
+<span num="21">            stackSink = x</span>
+<span num="22">        }</span>
+<span num="23">    }</span>
+<span num="24">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ GOGC=1 go test -bench . -benchmem
+BenchmarkHeap-16          2000000          6287   ns/op         801 B/op         100 allocs/op
+BenchmarkStack-16       500000000            30.7 ns/op           0 B/op           0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">19</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>sync.Pool</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="1">package sync</span>
+<span num="2"></span>
+<span num="3">type Pool struct {</span>
+<span num="4">    // New optionally specifies a function to generate</span>
+<span num="5">    // a value when Get would otherwise return nil.</span>
+<span num="6">    // It may not be changed concurrently with calls to Get.</span>
+<span num="7">    New func() interface{}</span>
+<span num="8">}</span>
+<span num="9"></span>
+<span num="10">func (p *Pool) Get() interface{}</span>
+<span num="11"></span>
+<span num="12">func (p *Pool) Put(x interface{})</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">20</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>sync.Pool</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="9">func BenchmarkNoPool(b *testing.B) {</span>
+<span num="10">    b.RunParallel(func(pb *testing.PB) {</span>
+<span num="11">        for pb.Next() {</span>
+<span num="12">            bb := &amp;bytes.Buffer{}</span>
+<span num="13">            for j := 0; j &lt; 1000; j&#43;&#43; {</span>
+<span num="14">                bb.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})</span>
+<span num="15">            }</span>
+<span num="16">        }</span>
+<span num="17">    })</span>
+<span num="18">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">21</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>sync.Pool</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="20">func BenchmarkPool(b *testing.B) {</span>
+<span num="21">    p := sync.Pool{</span>
+<span num="22">        New: func() interface{} {</span>
+<span num="23">            return &amp;bytes.Buffer{}</span>
+<span num="24">        },</span>
+<span num="25">    }</span>
+<span num="26"></span>
+<span num="27">    b.RunParallel(func(pb *testing.PB) {</span>
+<span num="28">        for pb.Next() {</span>
+<span num="29">            bb := p.Get().(*bytes.Buffer)</span>
+<span num="30">            bb.Reset() // Don&#39;t forget to reset the contents!</span>
+<span num="31">            for j := 0; j &lt; 1000; j&#43;&#43; {</span>
+<span num="32">                bb.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})</span>
+<span num="33">            }</span>
+<span num="34">            p.Put(bb)</span>
+<span num="35">        }</span>
+<span num="36">    })</span>
+<span num="37">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">22</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>sync.Pool</h3>
+        
+  
+  <div class="code"><pre>$ GOGC=1 go test -bench . -benchmem
+BenchmarkNoPool-16          200000          7375 ns/op       38516 B/op           9 allocs/op
+BenchmarkPool-16           1000000          1047 ns/op           0 B/op           0 allocs/op</pre></div>
+  
+
+  <ul>
+  
+    <li>Even faster in 1.13 (<a href="https://github.com/golang/go/issues/22950" target="_blank">no more full clear on GC</a>)</li>
+  
+  </ul>
+
+      
+      <span class="pagenumber">23</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  
+  <div class="code"><pre>type SliceHeader struct {
+        Data uintptr
+        Len  int
+        Cap  int
+}</pre></div>
+  
+
+  
+  <div class="code"><pre>type StringHeader struct {
+        Data uintptr
+        Len  int
+}</pre></div>
+  
+
+      
+      <span class="pagenumber">24</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="13">func BenchmarkSlow(b *testing.B) {</span>
+<span num="14">    input := []byte{0x31, 0x33, 0x33, 0x37}</span>
+<span num="15"></span>
+<span num="16">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="17">        strconv.Atoi(string(input))</span>
+<span num="18">    }</span>
+<span num="19">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">25</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="9">func b2s(b []byte) string {</span>
+<span num="10">    return *(*string)(unsafe.Pointer(&amp;b))</span>
+<span num="11">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="20">func BenchmarkFast(b *testing.B) {</span>
+<span num="21">    input := []byte{0x31, 0x33, 0x33, 0x37}</span>
+<span num="22"></span>
+<span num="23">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="24">        strconv.Atoi(b2s(input))</span>
+<span num="25">    }</span>
+<span num="26">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">26</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="9">func b2s(b []byte) string {</span>
+<span num="10">    return *(*string)(unsafe.Pointer(&amp;b))</span>
+<span num="11">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="20">func BenchmarkFast(b *testing.B) {</span>
+<span num="21">    input := []byte{0x31, 0x33, 0x33, 0x37}</span>
+<span num="22"></span>
+<span num="23">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="24">        strconv.Atoi(b2s(input))</span>
+<span num="25">    }</span>
+<span num="26">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ GOGC=1 go test -bench . -benchmem
+BenchmarkSlow-16        30000000            40.3  ns/op           4 B/op           1 allocs/op
+BenchmarkFast-16        300000000            4.83 ns/op           0 B/op           0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">27</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="20">func BenchmarkSlow(b *testing.B) {</span>
+<span num="21">    input := &#34;this is a test&#34;</span>
+<span num="22"></span>
+<span num="23">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="24">        ioutil.Discard.Write([]byte(input))</span>
+<span num="25">    }</span>
+<span num="26">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">28</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="10">func s2b(s string) []byte {</span>
+<span num="11">    sh := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))</span>
+<span num="12">    bh := reflect.SliceHeader{</span>
+<span num="13">        Data: sh.Data,</span>
+<span num="14">        Len:  sh.Len,</span>
+<span num="15">        Cap:  sh.Len,</span>
+<span num="16">    }</span>
+<span num="17">    return *(*[]byte)(unsafe.Pointer(&amp;bh))</span>
+<span num="18">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="28">func BenchmarkFast(b *testing.B) {</span>
+<span num="29">    input := &#34;this is a test&#34;</span>
+<span num="30"></span>
+<span num="31">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="32">        ioutil.Discard.Write(s2b(input))</span>
+<span num="33">    }</span>
+<span num="34">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">29</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>string/[]byte conversions</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="10">func s2b(s string) []byte {</span>
+<span num="11">    sh := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))</span>
+<span num="12">    bh := reflect.SliceHeader{</span>
+<span num="13">        Data: sh.Data,</span>
+<span num="14">        Len:  sh.Len,</span>
+<span num="15">        Cap:  sh.Len,</span>
+<span num="16">    }</span>
+<span num="17">    return *(*[]byte)(unsafe.Pointer(&amp;bh))</span>
+<span num="18">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="28">func BenchmarkFast(b *testing.B) {</span>
+<span num="29">    input := &#34;this is a test&#34;</span>
+<span num="30"></span>
+<span num="31">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="32">        ioutil.Discard.Write(s2b(input))</span>
+<span num="33">    }</span>
+<span num="34">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ GOGC=1 go test -bench . -benchmem
+BenchmarkSlow-16        20000000           102    ns/op          16 B/op           1 allocs/op
+BenchmarkFast-16        500000000            3.67 ns/op           0 B/op           0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">30</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Struct packing</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="8">type TooBig struct {</span>
+<span num="9">    a [14]int64 // 112 (14*8) bytes</span>
+<span num="10"></span>
+<span num="11">    b int32   // 4</span>
+<span num="12">    c float64 // 8</span>
+<span num="13">    d int32   // 4</span>
+<span num="14">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">31</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Struct packing</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="8">type TooBig struct {</span>
+<span num="9">    a [14]int64 // 112 (14*8) bytes</span>
+<span num="10"></span>
+<span num="11">    b int32   // 4</span>
+<span num="12">    c float64 // 8</span>
+<span num="13">    d int32   // 4</span>
+<span num="14">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="16">type JustRight struct {</span>
+<span num="17">    a [14]int64 // 112 (14*8) bytes</span>
+<span num="18"></span>
+<span num="19">    b int32   // 4</span>
+<span num="20">    d int32   // 4</span>
+<span num="21">    c float64 // 8</span>
+<span num="22">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">32</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Struct packing</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="30">func BenchmarkTooBig(b *testing.B) {</span>
+<span num="31">    m := make(map[int]TooBig)</span>
+<span num="32"></span>
+<span num="33">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="34">        m[i] = TooBig{}</span>
+<span num="35">    }</span>
+<span num="36">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="38">func BenchmarkJustRight(b *testing.B) {</span>
+<span num="39">    m := make(map[int]JustRight)</span>
+<span num="40"></span>
+<span num="41">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="42">        m[i] = JustRight{}</span>
+<span num="43">    }</span>
+<span num="44">}</span>
+</pre>
+
+
+</div>
+
+      
+      <span class="pagenumber">33</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Struct packing</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="30">func BenchmarkTooBig(b *testing.B) {</span>
+<span num="31">    m := make(map[int]TooBig)</span>
+<span num="32"></span>
+<span num="33">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="34">        m[i] = TooBig{}</span>
+<span num="35">    }</span>
+<span num="36">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="38">func BenchmarkJustRight(b *testing.B) {</span>
+<span num="39">    m := make(map[int]JustRight)</span>
+<span num="40"></span>
+<span num="41">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="42">        m[i] = JustRight{}</span>
+<span num="43">    }</span>
+<span num="44">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ go test -bench . -benchmem
+BenchmarkTooBig-16                    5000000       362 ns/op       212 B/op       1 allocs/op
+BenchmarkJustRight-16                 5000000       444 ns/op       529 B/op       0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">34</span>
+      </article>
+  
+  
+  
+      <article >
+      
+        <h3>Struct packing</h3>
+        
+  <div class="code" >
+
+
+<pre><span num="30">func BenchmarkTooBig(b *testing.B) {</span>
+<span num="31">    m := make(map[int]TooBig)</span>
+<span num="32"></span>
+<span num="33">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="34">        m[i] = TooBig{}</span>
+<span num="35">    }</span>
+<span num="36">}</span>
+</pre>
+
+
+</div>
+
+  <div class="code" >
+
+
+<pre><span num="46">func BenchmarkJustRightPrealloc(b *testing.B) {</span>
+<span num="47">    <b>m := make(map[int]JustRight, b.N)</b></span>
+<span num="48"></span>
+<span num="49">    for i := 0; i &lt; b.N; i&#43;&#43; {</span>
+<span num="50">        m[i] = JustRight{}</span>
+<span num="51">    }</span>
+<span num="52">}</span>
+</pre>
+
+
+</div>
+
+  
+  <div class="code"><pre>$ go test -bench . -benchmem
+BenchmarkTooBig-16                    5000000       362 ns/op       212 B/op       1 allocs/op
+BenchmarkJustRight-16                 5000000       444 ns/op       529 B/op       0 allocs/op
+BenchmarkJustRightPrealloc-16        10000000       340 ns/op       246 B/op       0 allocs/op</pre></div>
+  
+
+      
+      <span class="pagenumber">35</span>
+      </article>
+  
+  
+
+      <article>
+        <h3>Thank you</h3>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    Erik Dubbelboer
+  </p>
+  
+
+  
+  <p>
+    Senior Developer, poki.com
+  </p>
+  
+
+  
+  <p>
+    Co-founder/CTO, atomx.com
+  </p>
+  
+
+  
+  <p>
+    Maintainer, github.com/valyala/fasthttp
+  </p>
+  
+<p class="link"><a href="mailto:erik@dubbelboer.com" target="_blank">erik@dubbelboer.com</a></p><p class="link"><a href="https://github.com/erikdubbelboer" target="_blank">https://github.com/erikdubbelboer</a></p>
+          </div>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    
+  </p>
+  
+
+          </div>
+        
+          <div class="presenter">
+            
+  
+  <p>
+    
+  </p>
+  
+
+          </div>
+        
+      </article>
+
+    </section>
+
+    <div id="help">
+      Use the left and right arrow keys or click the left and right
+      edges of the page to navigate between slides.<br>
+      (Press 'H' or navigate to hide this message.)
+    </div>
+
+    
+  </body>
+</html>
